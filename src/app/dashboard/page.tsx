@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Building2, Settings, BarChart3 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, error } = useQuery({
     queryKey: ['analytics', 'overview'],
     queryFn: async () => {
       const response = await analyticsApi.getOverview();
@@ -24,9 +24,11 @@ export default function DashboardPage() {
       }
       throw new Error(response.message || 'Failed to fetch analytics');
     },
+    staleTime: 60000, // Consider data fresh for 1 minute
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
   });
 
-  if (isLoading) {
+  if (isLoading || isFetching) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

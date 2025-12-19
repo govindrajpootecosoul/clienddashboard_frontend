@@ -43,14 +43,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await authApi.login(email, password);
-    if (response.success && response.data) {
-      const { user, tokens } = response.data;
-      localStorage.setItem('accessToken', tokens.accessToken);
-      localStorage.setItem('refreshToken', tokens.refreshToken);
-      setUser(user);
-    } else {
-      throw new Error(response.message || 'Login failed');
+    try {
+      const response = await authApi.login(email, password);
+      if (response.success && response.data) {
+        const { user, tokens } = response.data;
+        localStorage.setItem('accessToken', tokens.accessToken);
+        localStorage.setItem('refreshToken', tokens.refreshToken);
+        setUser(user);
+      } else {
+        throw new Error(response.message || 'Login failed');
+      }
+    } catch (error: any) {
+      // Re-throw with better error message
+      if (error.message) {
+        throw error;
+      }
+      throw new Error('Network error: Unable to connect to server. Please check if the server is running.');
     }
   };
 

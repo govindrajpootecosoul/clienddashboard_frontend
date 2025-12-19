@@ -25,7 +25,46 @@ export default function LoginPage() {
       await login(email, password);
       router.push('/dashboard');
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      // Show user-friendly error messages
+      let errorMessage = 'Login failed. Please check your credentials.';
+      
+      // Extract error message from various possible locations
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = typeof err.response.data.error === 'string' 
+          ? err.response.data.error 
+          : 'Login failed';
+      }
+      
+      // Make error messages more user-friendly
+      if (errorMessage.includes('Network error') || errorMessage.includes('Unable to connect')) {
+        errorMessage = 'Unable to connect to server. Please ensure the backend server is running on port 4000.';
+      } else if (errorMessage.includes('401') || errorMessage.includes('Invalid') || errorMessage.includes('credentials') || errorMessage.includes('Unauthorized')) {
+        errorMessage = 'Invalid email or password. Please try again.';
+      } else if (errorMessage === 'Something went wrong') {
+        // If we get a generic error, check the status code
+        const statusCode = err.response?.status || err.status;
+        if (statusCode === 401) {
+          errorMessage = 'Invalid email or password. Please try again.';
+        } else if (statusCode === 500) {
+          errorMessage = 'Server error. Please try again later or contact support.';
+        } else {
+          errorMessage = 'Login failed. Please check your credentials and try again.';
+        }
+      }
+      
+      // Log full error for debugging
+      console.error('Login error:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status || err.status,
+        fullError: err
+      });
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

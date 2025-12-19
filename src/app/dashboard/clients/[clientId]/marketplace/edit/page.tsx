@@ -31,7 +31,19 @@ export default function EditMarketplacePage() {
     queryFn: async () => {
       const response = await marketPlaceApi.get(clientId);
       if (response.success && response.data) {
-        return response.data;
+        // Ensure regionConfigs is an array (backend should parse it, but add safety check)
+        const data = response.data;
+        if (data.regionConfigs && typeof data.regionConfigs === 'string') {
+          try {
+            data.regionConfigs = JSON.parse(data.regionConfigs);
+          } catch {
+            data.regionConfigs = [];
+          }
+        }
+        if (!Array.isArray(data.regionConfigs)) {
+          data.regionConfigs = [];
+        }
+        return data;
       }
       return null;
     },
@@ -39,11 +51,16 @@ export default function EditMarketplacePage() {
 
   useEffect(() => {
     if (existingMarketPlace) {
+      // Ensure regionConfigs is an array
+      const regionConfigs = Array.isArray(existingMarketPlace.regionConfigs)
+        ? existingMarketPlace.regionConfigs
+        : [];
+      
       setFormData({
         market_place_name: existingMarketPlace.market_place_name || 'amazon',
         market_app_id: existingMarketPlace.market_app_id || '',
         market_client_secret: existingMarketPlace.market_client_secret || '',
-        regionConfigs: existingMarketPlace.regionConfigs || [],
+        regionConfigs: regionConfigs,
       });
     }
   }, [existingMarketPlace]);

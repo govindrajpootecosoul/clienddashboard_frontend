@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Search, Edit, Eye } from 'lucide-react';
+import { Plus, Search, Edit, Eye, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EditClientForm } from '@/components/forms/EditClientForm';
 import type { Client } from '@/types';
@@ -30,12 +30,13 @@ export default function ClientsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
   const limit = 10;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['clients', page, search],
     queryFn: async () => {
       const response = await clientApi.list({ page, limit, search });
@@ -43,6 +44,22 @@ export default function ClientsPage() {
         return response.data;
       }
       throw new Error(response.message || 'Failed to fetch clients');
+    },
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+  });
+
+  const deleteClientMutation = useMutation({
+    mutationFn: async (clientId: string) => {
+      const response = await clientApi.delete(clientId);
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to delete client');
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setShowDeleteModal(false);
+      setSelectedClient(null);
     },
   });
 
@@ -77,7 +94,7 @@ export default function ClientsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {(isLoading || isFetching) ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
@@ -124,21 +141,40 @@ export default function ClientsPage() {
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex gap-2">
                             <Button
+                              type="button"
                               variant="ghost"
                               size="icon"
-                              onClick={() => router.push(`/dashboard/clients/${client.client_id}`)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/dashboard/clients/${client.client_id}`);
+                              }}
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
                             <Button
+                              type="button"
                               variant="ghost"
                               size="icon"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setSelectedClient(client);
                                 setShowEditModal(true);
                               }}
                             >
                               <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedClient(client);
+                                setShowDeleteModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -198,6 +234,48 @@ export default function ClientsPage() {
                 setSelectedClient(null);
               }}
             />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {selectedClient && (
+        <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Client</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete <strong>{selectedClient.client_name}</strong>? 
+                This action will permanently delete the client and all associated data including:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>All users associated with this client</li>
+                  <li>All ads configurations</li>
+                  <li>All marketplace configurations</li>
+                </ul>
+                <span className="text-red-600 font-semibold mt-2 block">This action cannot be undone.</span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setSelectedClient(null);
+                }}
+                disabled={deleteClientMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  deleteClientMutation.mutate(selectedClient.client_id);
+                }}
+                disabled={deleteClientMutation.isPending}
+              >
+                {deleteClientMutation.isPending ? 'Deleting...' : 'Delete Client'}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}

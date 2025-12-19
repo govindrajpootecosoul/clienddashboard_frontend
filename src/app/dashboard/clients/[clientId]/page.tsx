@@ -42,6 +42,7 @@ export default function ClientDetailPage() {
   const [showMarketplaceModal, setShowMarketplaceModal] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
+  const [showDeleteUserModal, setShowDeleteUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [revealedTokens, setRevealedTokens] = useState<Set<string>>(new Set());
 
@@ -79,7 +80,19 @@ export default function ClientDetailPage() {
     queryFn: async () => {
       const response = await marketPlaceApi.get(clientId);
       if (response.success && response.data) {
-        return response.data;
+        // Ensure regionConfigs is an array (backend should parse it, but add safety check)
+        const data = response.data;
+        if (data.regionConfigs && typeof data.regionConfigs === 'string') {
+          try {
+            data.regionConfigs = JSON.parse(data.regionConfigs);
+          } catch {
+            data.regionConfigs = [];
+          }
+        }
+        if (!Array.isArray(data.regionConfigs)) {
+          data.regionConfigs = [];
+        }
+        return data;
       }
       return null;
     },
@@ -115,6 +128,34 @@ export default function ClientDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adsConfigs', clientId] });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      console.log('🗑️ Frontend: Attempting to delete user with ID:', userId);
+      try {
+        const response = await userApi.delete(userId);
+        if (!response.success) {
+          throw new Error(response.message || 'Failed to delete user');
+        }
+        console.log('✅ Frontend: User deleted successfully');
+        return response;
+      } catch (error: any) {
+        console.error('❌ Frontend: Error deleting user:', error);
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      console.log('✅ Frontend: Delete mutation succeeded, invalidating queries');
+      queryClient.invalidateQueries({ queryKey: ['users', 'client', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setShowDeleteUserModal(false);
+      setSelectedUser(null);
+    },
+    onError: (error: any) => {
+      console.error('❌ Frontend: Delete mutation error:', error);
+      // Error will be shown by the UI if needed
     },
   });
 
@@ -530,7 +571,7 @@ export default function ClientDetailPage() {
                     <label className="text-sm font-medium text-gray-500">Market App ID</label>
                     <p className="text-gray-900 font-mono text-sm">{marketPlace.market_app_id}</p>
                   </div>
-                  {marketPlace.regionConfigs && marketPlace.regionConfigs.length > 0 && (
+                  {marketPlace.regionConfigs && Array.isArray(marketPlace.regionConfigs) && marketPlace.regionConfigs.length > 0 && (
                     <div>
                       <label className="text-sm font-medium text-gray-500 mb-2 block">
                         Region Configurations
@@ -630,16 +671,33 @@ export default function ClientDetailPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setSelectedUser(user);
-                              setShowEditUserModal(true);
-                            }}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedUser(user);
+                                setShowEditUserModal(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedUser(user);
+                                setShowDeleteUserModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -742,6 +800,52 @@ export default function ClientDetailPage() {
                 setSelectedUser(null);
               }}
             />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {selectedUser && (
+        <Dialog open={showDeleteUserModal} onOpenChange={setShowDeleteUserModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete User</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete <strong>{selectedUser.name}</strong> ({selectedUser.email})? 
+                <br />
+                <span className="text-red-600 font-semibold mt-2 block">This action cannot be undone.</span>
+              </DialogDescription>
+            </DialogHeader>
+            {deleteUserMutation.isError && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-800">
+                  {deleteUserMutation.error?.message || 'Failed to delete user. Please try again.'}
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteUserModal(false);
+                  setSelectedUser(null);
+                  deleteUserMutation.reset();
+                }}
+                disabled={deleteUserMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  console.log('🗑️ Delete button clicked, user ID:', selectedUser._id, 'Type:', typeof selectedUser._id);
+                  deleteUserMutation.mutate(selectedUser._id);
+                }}
+                disabled={deleteUserMutation.isPending}
+              >
+                {deleteUserMutation.isPending ? 'Deleting...' : 'Delete User'}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}

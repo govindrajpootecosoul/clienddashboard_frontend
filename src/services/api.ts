@@ -15,8 +15,22 @@ export const authApi = {
     email: string,
     password: string
   ): Promise<ApiResponse<{ user: User; tokens: { accessToken: string; refreshToken: string } }>> => {
-    const response = await api.post('/user/login', { email, password });
-    return response.data;
+    try {
+      const response = await api.post('/user/login', { email, password });
+      return response.data;
+    } catch (error: any) {
+      // Handle network errors
+      if (!error.response) {
+        throw new Error('Network error: Unable to connect to server. Please check if the server is running.');
+      }
+      // Handle API errors
+      if (error.response?.data) {
+        const apiError = new Error(error.response.data.message || 'Login failed');
+        (apiError as any).response = error.response;
+        throw apiError;
+      }
+      throw error;
+    }
   },
 
   signup: async (data: {
@@ -32,7 +46,11 @@ export const authApi = {
       const response = await api.post('/user/signup', data);
       return response.data;
     } catch (error: any) {
-      // Re-throw with response data for better error handling
+      // Handle network errors
+      if (!error.response) {
+        throw new Error('Network error: Unable to connect to server. Please check if the server is running.');
+      }
+      // Handle API errors
       if (error.response?.data) {
         const apiError = new Error(error.response.data.message || 'Failed to create user');
         (apiError as any).response = error.response;
@@ -89,12 +107,31 @@ export const clientApi = {
   },
 
   create: async (data: Partial<Client>): Promise<ApiResponse<Client>> => {
-    const response = await api.post('/clients', data);
-    return response.data;
+    try {
+      const response = await api.post('/clients', data);
+      return response.data;
+    } catch (error: any) {
+      // Handle network errors
+      if (!error.response) {
+        throw new Error('Network error: Unable to connect to server. Please check if the server is running.');
+      }
+      // Handle API errors
+      if (error.response?.data) {
+        const apiError = new Error(error.response.data.message || 'Failed to create client');
+        (apiError as any).response = error.response;
+        throw apiError;
+      }
+      throw error;
+    }
   },
 
   update: async (clientId: string, data: Partial<Client>): Promise<ApiResponse<Client>> => {
     const response = await api.patch(`/clients/${clientId}`, data);
+    return response.data;
+  },
+
+  delete: async (clientId: string): Promise<ApiResponse<void>> => {
+    const response = await api.delete(`/clients/${clientId}`);
     return response.data;
   },
 };

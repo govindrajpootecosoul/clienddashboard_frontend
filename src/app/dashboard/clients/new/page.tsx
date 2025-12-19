@@ -24,7 +24,6 @@ export default function NewClientPage() {
     business_logo: '',
   });
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const mutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -39,22 +38,87 @@ export default function NewClientPage() {
       // Redirect to client detail page to add ads config and marketplace config
       router.push(`/dashboard/clients/${data.client_id}`);
     },
+    onError: (err: any) => {
+      // Extract error message from various possible locations
+      let errorMessage = 'Failed to create client. Please try again.';
+      
+      // Check for validation errors
+      if (err.response?.data?.error) {
+        const errorData = err.response.data.error;
+        
+        // Handle Zod validation errors (array format)
+        if (Array.isArray(errorData)) {
+          const validationErrors = errorData.map((e: any) => {
+            const field = e.path?.join('.')?.replace('body.', '') || 'field';
+            return `${field}: ${e.message}`;
+          }).join(', ');
+          errorMessage = `Validation failed: ${validationErrors}`;
+        }
+        // Handle flattened validation errors
+        else if (errorData?.fieldErrors) {
+          const fieldErrors = Object.entries(errorData.fieldErrors)
+            .map(([field, messages]: [string, any]) => {
+              const msg = Array.isArray(messages) ? messages.join(', ') : messages;
+              return `${field}: ${msg}`;
+            })
+            .join(', ');
+          errorMessage = `Validation failed: ${fieldErrors}`;
+        }
+        // Handle simple error string
+        else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      }
+      
+      // Check for API error message
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
+      // Check for error message in error object
+      if (err.message && errorMessage === 'Failed to create client. Please try again.') {
+        errorMessage = err.message;
+      }
+      
+      // In development, show more detailed error
+      const isDev = process.env.NODE_ENV === 'development';
+      if (isDev && err.response?.data?.error) {
+        const errorDetails = err.response.data.error;
+        if (errorDetails.message || errorDetails.code) {
+          errorMessage = `${errorMessage} (${errorDetails.message || errorDetails.code})`;
+        }
+      }
+      
+      console.error('Client creation error:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        errorDetails: err.response?.data?.error,
+        fullError: err
+      });
+      
+      setError(errorMessage);
+    },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
     try {
-      // Remove empty strings to send only filled fields
-      const cleanedData = Object.fromEntries(
-        Object.entries(formData).filter(([_, value]) => value.trim() !== '')
-      );
+      // Clean data: remove empty strings, but keep client_name even if empty (will be validated by backend)
+      const cleanedData: any = {};
+      Object.entries(formData).forEach(([key, value]) => {
+        const trimmedValue = typeof value === 'string' ? value.trim() : value;
+        // Only include non-empty values, except client_name which is required
+        if (key === 'client_name' || trimmedValue !== '') {
+          cleanedData[key] = trimmedValue;
+        }
+      });
+      
       await mutation.mutateAsync(cleanedData as typeof formData);
     } catch (err: any) {
-      setError(err.message || 'Failed to create client');
-      setLoading(false);
+      // Error is handled by onError callback
     }
   };
 
@@ -178,14 +242,14 @@ export default function NewClientPage() {
             </div>
 
             <div className="flex gap-4 pt-4">
-              <Button type="submit" disabled={loading || !formData.client_name.trim()}>
-                {loading ? 'Creating...' : 'Create Client'}
+              <Button type="submit" disabled={mutation.isPending || !formData.client_name.trim()}>
+                {mutation.isPending ? 'Creating...' : 'Create Client'}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => router.push('/dashboard/clients')}
-                disabled={loading}
+                disabled={mutation.isPending}
               >
                 Cancel
               </Button>

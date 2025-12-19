@@ -25,7 +25,19 @@ export default function MarketplacePage() {
     queryFn: async () => {
       const response = await marketPlaceApi.get(clientId);
       if (response.success && response.data) {
-        return response.data;
+        // Ensure regionConfigs is an array (backend should parse it, but add safety check)
+        const data = response.data;
+        if (data.regionConfigs && typeof data.regionConfigs === 'string') {
+          try {
+            data.regionConfigs = JSON.parse(data.regionConfigs);
+          } catch {
+            data.regionConfigs = [];
+          }
+        }
+        if (!Array.isArray(data.regionConfigs)) {
+          data.regionConfigs = [];
+        }
+        return data;
       }
       return null;
     },
@@ -83,7 +95,7 @@ export default function MarketplacePage() {
                 <label className="text-sm font-medium text-gray-500">Market Client Secret</label>
                 <p className="text-gray-900 font-mono text-sm">••••••••</p>
               </div>
-              {data.regionConfigs && data.regionConfigs.length > 0 && (
+              {data.regionConfigs && Array.isArray(data.regionConfigs) && data.regionConfigs.length > 0 && (
                 <div>
                   <label className="text-sm font-medium text-gray-500 mb-2 block">
                     Region Configurations

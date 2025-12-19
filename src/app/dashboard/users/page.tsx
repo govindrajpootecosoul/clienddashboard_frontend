@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userApi } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Search, Edit, Plus, Filter, X } from 'lucide-react';
+import { Search, Edit, Plus, Filter, X, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { AddUserForm } from '@/components/forms/AddUserForm';
 import { EditUserForm } from '@/components/forms/EditUserForm';
@@ -35,7 +35,9 @@ export default function UsersPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
   const limit = 10;
@@ -54,7 +56,7 @@ export default function UsersPage() {
 
   const clients = clientsData?.data || [];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ['users', page, search, selectedClientId, selectedStatus],
     queryFn: async () => {
       const params: any = { page, limit };
@@ -68,6 +70,8 @@ export default function UsersPage() {
       }
       throw new Error(response.message || 'Failed to fetch users');
     },
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
   });
 
   const clearFilters = () => {
@@ -78,6 +82,21 @@ export default function UsersPage() {
   };
 
   const hasActiveFilters = search || selectedClientId || selectedStatus;
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await userApi.delete(userId);
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to delete user');
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setShowDeleteModal(false);
+      setSelectedUserId(null);
+      setSelectedUser(null);
+    },
+  });
 
   return (
     <div>
@@ -159,7 +178,7 @@ export default function UsersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {(isLoading || isFetching) ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
@@ -204,16 +223,34 @@ export default function UsersPage() {
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setSelectedUserId(user._id);
-                              setShowEditUserModal(true);
-                            }}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedUserId(user._id);
+                                setShowEditUserModal(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedUserId(user._id);
+                                setSelectedUser(user);
+                                setShowDeleteModal(true);
+                              }}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -291,6 +328,44 @@ export default function UsersPage() {
                 setSelectedUserId(null);
               }}
             />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {selectedUser && selectedUserId && (
+        <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete User</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete <strong>{selectedUser.name}</strong> ({selectedUser.email})? 
+                <br />
+                <span className="text-red-600 font-semibold mt-2 block">This action cannot be undone.</span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setSelectedUserId(null);
+                  setSelectedUser(null);
+                }}
+                disabled={deleteUserMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  deleteUserMutation.mutate(selectedUserId);
+                }}
+                disabled={deleteUserMutation.isPending}
+              >
+                {deleteUserMutation.isPending ? 'Deleting...' : 'Delete User'}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       )}
